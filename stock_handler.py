@@ -4,6 +4,8 @@ import yfinance as yf
 import datetime
 import os
 
+CSV_FILE = "stocks_list.csv"   # CSV 파일: 종목코드, 주식명, market
+DB_FILE = "stocks.db"  # SQLite DB 파일 경로
 
 def create_db_table(conn):
     """
@@ -27,6 +29,16 @@ def create_db_table(conn):
     conn.execute(create_table_query)
     conn.commit()
 
+# --- RSI 계산 및 Telegram 메시지 전송 함수 ---
+def calculate_rsi(series, period=14):
+    delta = series.diff()
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    avg_gain = gain.rolling(window=period).mean()
+    avg_loss = loss.rolling(window=period).mean()
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
 
 # 1. CSV 파일에 있는 종목목록을 읽어 지난 1년치 데이터를 DB에 저장하는 함수
 def store_stock_data_from_csv(csv_filename, db_path):
@@ -182,9 +194,6 @@ def get_stock_data(stock_code, market, db_path):
 
 # 예시 실행 코드
 if __name__ == "__main__":
-    CSV_FILE = "stocks_list.csv"  # CSV 파일 경로 (종목코드, 주식명, market)
-    DB_FILE = "stocks.db"  # SQLite DB 파일 경로
-
     # 1. 초기 저장: DB가 없으면 CSV에 있는 종목들의 지난 1년치 데이터를 DB에 저장
     if not os.path.exists(DB_FILE):
         print("DB가 존재하지 않으므로 초기 저장을 진행합니다.")
