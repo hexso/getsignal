@@ -130,11 +130,11 @@ def update_stock_data_from_csv(csv_filename, db_path):
                     ticker,
                     stock_name,
                     date_str,
-                    float(d['Open']),
-                    float(d['High']),
-                    float(d['Low']),
-                    float(d['Close']),
-                    int(d['Volume'])
+                    float(d['Open'].iloc[0]),
+                    float(d['High'].iloc[0]),
+                    float(d['Low'].iloc[0]),
+                    float(d['Close'].iloc[0]),
+                    int(d['Volume'].iloc[0])  # 이미 올바르게 처리됨
                 ))
             conn.commit()
             print(f"{ticker} ({stock_name}) 데이터 최신화 완료.")
