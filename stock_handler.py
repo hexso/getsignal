@@ -40,6 +40,31 @@ def calculate_rsi(series, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
+def calculate_macd(series, short=12, long=26, signal=9):
+    """MACD 지표를 계산합니다.
+    - macd_line: 단기 EMA와 장기 EMA의 차이
+    - signal_line: macd_line의 EMA (보통 9일)
+    - histogram: macd_line과 signal_line의 차이
+    """
+    ema_short = series.ewm(span=short, adjust=False).mean()
+    ema_long = series.ewm(span=long, adjust=False).mean()
+    macd_line = ema_short - ema_long
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+def calculate_bollinger_bands(series, window=20, num_std=2):
+    """볼린저밴드를 계산합니다.
+    - middle_band: 단순 이동평균 (window 기간)
+    - upper_band: middle_band + (num_std * 표준편차)
+    - lower_band: middle_band - (num_std * 표준편차)
+    """
+    middle_band = series.rolling(window=window).mean()
+    std = series.rolling(window=window).std()
+    upper_band = middle_band + num_std * std
+    lower_band = middle_band - num_std * std
+    return middle_band, upper_band, lower_band
+
 # 1. CSV 파일에 있는 종목목록을 읽어 지난 1년치 데이터를 DB에 저장하는 함수
 def store_stock_data_from_csv(csv_filename, db_path):
     # CSV 파일은 종목코드, 주식명, market 순으로 저장되어 있음
@@ -133,7 +158,7 @@ def update_stock_data_from_csv(csv_filename, db_path):
             data['Date'] = pd.to_datetime(data['Date'])
 
             for _, d in data.iterrows():
-                date_str = str(pd.to_datetime(d['Date']).strftime("%Y-%m-%d"))
+                date_str = str(pd.to_datetime(d['Date'].iloc[0]).strftime("%Y-%m-%d"))
                 insert_query = """
                 INSERT OR IGNORE INTO stock_data (ticker, stock_name, date, open, high, low, close, volume)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)

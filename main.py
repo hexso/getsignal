@@ -1,60 +1,20 @@
-from fastapi import FastAPI
-from apscheduler.schedulers.background import BackgroundScheduler
-import os
-from telegram import Bot
+from telegram import Update, Bot
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, ContextTypes
 import pandas as pd
-from stock_handler import CSV_FILE, DB_FILE, get_stock_data, calculate_rsi
+from stock_handler import CSV_FILE, DB_FILE, get_stock_data, calculate_rsi, update_stock_data_from_csv, calculate_macd, calculate_bollinger_bands
 import asyncio
+import logging
+import nest_asyncio
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 # --- 환경 설정 ---
 bot = None
 user_id = None
 bot_id = None
+bot_token = None
 
-async def send_telegram_message(message: str):
-    """텔레그램 메시지를 전송합니다."""
-    def split_message(message, max_length=4096):
-        return [message[i:i + max_length] for i in range(0, len(message), max_length)]
-
-    messages = split_message(message)  # 긴 메시지 분할
-    for msg in messages:
-        await bot.send_message(chat_id=user_id, text=msg)
-
-def start_rsi_check():
-    """
-    CSV 파일의 모든 종목에 대해 get_stock_data()를 호출하여 데이터를 가져온 후,
-    calculate_rsi() 함수를 사용해 RSI(14일)를 계산합니다.
-    RSI가 30 미만인 종목들을 '종목코드, 주식명, RSI, 최신가' 형식으로 모아
-    텔레그램 메시지로 전송합니다.
-    """
-    df = pd.read_csv(CSV_FILE, encoding="utf-8-sig", dtype={'종목코드': str})
-    df['종목코드'] = df['종목코드'].str.zfill(6)
-    results = []
-    for idx, row in df.iterrows():
-        stock_code = str(row['종목코드']).strip()
-        stock_name = str(row['주식명']).strip()
-        market = str(row['market']).strip()
-        data = get_stock_data(stock_code, market, DB_FILE)
-        if data is None or data.empty:
-            continue
-        # calculate_rsi 함수 활용
-        rsi_series = calculate_rsi(data['close'])
-        latest_rsi = rsi_series.iloc[-1]
-        latest_price = data['close'].iloc[-1]
-        if latest_rsi < 30:
-            results.append(f"{stock_code} {stock_name}: RSI {latest_rsi:.2f}, Price {latest_price:.2f}")
-    if results:
-        message_text = "매수 신호 종목 (RSI < 30):\n" + "\n".join(results)
-    else:
-        message_text = "현재 RSI가 30 미만인 종목이 없습니다."
-    asyncio.run(send_telegram_message(message_text))
-    return {"message": "RSI 체크 완료", "result": message_text}
-
-
-if __name__ == "__main__":
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-
+def telegram_init():
+    global bot_token, bot_id, user_id, bot
     # 파일을 읽고 내용을 변수에 저장하는 코드
     with open('private.txt', 'r') as file:
         # 파일 내용을 줄 단위로 읽어옴
@@ -66,8 +26,110 @@ if __name__ == "__main__":
             bot_id = line.split(':')[1].strip()
         elif line.startswith('id:'):
             user_id = line.split(':')[1].strip()  # ':' 이후 값에서 공백을 제거하여 저장
-
     bot = Bot(bot_token)
 
-    result = start_rsi_check()
-    print(result)
+async def send_telegram_message(message: str):
+    """텔레그램 메시지를 전송합니다."""
+    def split_message(message, max_length=4096):
+        return [message[i:i + max_length] for i in range(0, len(message), max_length)]
+
+    messages = split_message(message)  # 긴 메시지 분할
+    for msg in messages:
+        await bot.send_message(chat_id=user_id, text=msg)
+
+# 텔레그램 메시지 핸들러: "start" 메시지를 받으면 start_rsi_check() 함수를 실행
+async def handle_start_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = update.message.text.strip().lower()
+    if text == "start":
+        # 동기 함수를 blocking 없이 실행 (필요한 경우)
+        result = await asyncio.to_thread(start_check)
+        # result는 {"message": ..., "result": ...} 형식의 dict라고 가정
+        await update.message.reply_text("start에 대한 명령을 완료하였습니다.")
+        await send_telegram_message(result["result"])
+    else:
+        await update.message.reply_text("알 수 없는 명령입니다. 'start'를 보내주세요.")
+
+
+def start_check():
+    """
+    CSV 파일의 모든 종목에 대해 get_stock_data()를 호출하여 데이터를 가져온 후,
+    calculate_rsi()를 통해 RSI(14일), calculate_macd()를 통해 MACD,
+    calculate_bollinger_bands()를 통해 볼린저밴드를 계산합니다.
+    RSI가 30 미만인 종목에 대해 '종목코드, 주식명, RSI, 최신가, MACD(및 Signal), 볼린저밴드(Upper, Middle, Lower)'
+    정보를 포맷팅하여 results에 저장한 후, 텔레그램 메시지로 전송합니다.
+    """
+    df = pd.read_csv(CSV_FILE, encoding="utf-8-sig", dtype={'종목코드': str})
+    df['종목코드'] = df['종목코드'].str.zfill(6)
+    results = []
+    for idx, row in df.iterrows():
+        stock_code = str(row['종목코드']).strip()
+        stock_name = str(row['주식명']).strip()
+        market = str(row['market']).strip()
+        data = get_stock_data(stock_code, market, DB_FILE)
+        if data is None or data.empty:
+            continue
+
+        # RSI 계산 (calculate_rsi 함수는 이미 구현되어 있다고 가정)
+        rsi_series = calculate_rsi(data['close'])
+        latest_rsi = rsi_series.iloc[-1]
+        latest_price = data['close'].iloc[-1]
+
+        # MACD 계산
+        macd_line, signal_line, _ = calculate_macd(data['close'])
+        latest_macd = macd_line.iloc[-1]
+        latest_signal = signal_line.iloc[-1]
+
+        # 볼린저 밴드 계산
+        middle_band, upper_band, lower_band = calculate_bollinger_bands(data['close'])
+        latest_middle = middle_band.iloc[-1]
+        latest_upper = upper_band.iloc[-1]
+        latest_lower = lower_band.iloc[-1]
+
+        # 최근 10일 평균 거래량과 현재 거래량 계산
+        avg_volume_10d = data['volume'].tail(10).mean()
+        current_volume = data['volume'].iloc[-1]
+
+        # RSI가 30 미만, 볼린저 하방 터치, 최근거래량대비 5배이상
+        if latest_rsi < 30 and latest_middle <= latest_upper and avg_volume_10d*5 < current_volume:
+            results.append(
+                f"{stock_code} {stock_name}:\n"
+                f"  RSI: {latest_rsi:.2f}, Price: {latest_price:.2f}\n"
+                f"  MACD: {latest_macd:.2f} (Signal: {latest_signal:.2f})\n"
+                f"  Bollinger: Upper {latest_upper:.2f}, Middle {latest_middle:.2f}, Lower {latest_lower:.2f}"
+            )
+
+    if results:
+        message_text = "매수 신호 종목:\n" + "\n\n".join(results)
+    else:
+        message_text = "현재 조건에 맞는 종목이 없습니다."
+
+    return {"message": "체크 완료", "result": message_text}
+
+# 스케줄러에서 호출할 함수: 매일 오후 4시 30분에 실행되어 DB를 최신화
+def scheduled_stock_update():
+    print("스케줄러: 주식 데이터 최신화 시작")
+    update_stock_data_from_csv("stocks_list.csv", "stocks.db")
+    print("스케줄러: 주식 데이터 최신화 완료")
+
+async def main():
+    logging.basicConfig(
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    )
+
+    app = ApplicationBuilder().token(bot_token).build()
+
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_start_message))
+    # APScheduler를 이용해 매일 오후 4시 30분에 scheduled_stock_update() 실행
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(scheduled_stock_update, "cron", day_of_week="mon-fri", hour=16, minute=30)
+    scheduler.start()
+
+    await app.run_polling(close_loop=False)
+
+
+if __name__ == "__main__":
+    telegram_init()
+    nest_asyncio.apply()
+    asyncio.run(main())
+    #result = start_check()
+    #print(result)
