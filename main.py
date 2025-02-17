@@ -12,6 +12,7 @@ bot = None
 user_id = None
 bot_id = None
 bot_token = None
+RSI_LOWER = 20
 
 def telegram_init():
     global bot_token, bot_id, user_id, bot
@@ -72,30 +73,19 @@ def start_check():
         # RSI 계산 (calculate_rsi 함수는 이미 구현되어 있다고 가정)
         rsi_series = calculate_rsi(data['close'])
         latest_rsi = rsi_series.iloc[-1]
+        rsi_yesterday = rsi_series.iloc[-2]
+        rsi_before_yesterday = rsi_series.iloc[-2]
         latest_price = data['close'].iloc[-1]
 
         # MACD 계산
         macd_line, signal_line, _ = calculate_macd(data['close'])
-        latest_macd = macd_line.iloc[-1]
-        latest_signal = signal_line.iloc[-1]
 
-        # 볼린저 밴드 계산
-        middle_band, upper_band, lower_band = calculate_bollinger_bands(data['close'])
-        latest_middle = middle_band.iloc[-1]
-        latest_upper = upper_band.iloc[-1]
-        latest_lower = lower_band.iloc[-1]
 
-        # 최근 10일 평균 거래량과 현재 거래량 계산
-        avg_volume_10d = data['volume'].tail(10).mean()
-        current_volume = data['volume'].iloc[-1]
-
-        # RSI가 30 미만, 볼린저 하방 터치, 최근거래량대비 5배이상
-        if latest_rsi < 30 and latest_middle <= latest_upper and avg_volume_10d*5 < current_volume:
+        # RSI가 20미만, RSI가 추세전환 했는지 확인
+        if latest_rsi < RSI_LOWER and rsi_yesterday > latest_rsi < rsi_before_yesterday:# and latest_before_rsi < latest_rsi:
             results.append(
                 f"{stock_code} {stock_name}:\n"
                 f"  RSI: {latest_rsi:.2f}, Price: {latest_price:.2f}\n"
-                f"  MACD: {latest_macd:.2f} (Signal: {latest_signal:.2f})\n"
-                f"  Bollinger: Upper {latest_upper:.2f}, Middle {latest_middle:.2f}, Lower {latest_lower:.2f}"
             )
 
     if results:
@@ -131,5 +121,6 @@ if __name__ == "__main__":
     telegram_init()
     nest_asyncio.apply()
     asyncio.run(main())
+    #scheduled_stock_update()
     #result = start_check()
     #print(result)
