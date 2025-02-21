@@ -65,6 +65,89 @@ def calculate_bollinger_bands(series, window=20, num_std=2):
     lower_band = middle_band - num_std * std
     return middle_band, upper_band, lower_band
 
+
+def calculate_mfi(high, low, close, volume, window=14):
+    """
+    MFI (Money Flow Index)를 계산합니다.
+
+    - typical_price: (high + low + close) / 3
+    - raw_money_flow: typical_price * volume
+    - 양의 머니 플로우: typical_price가 전일보다 높으면 raw_money_flow, 아니면 0
+    - 음의 머니 플로우: typical_price가 전일보다 낮으면 raw_money_flow, 아니면 0
+    - MFI: 100 - (100 / (1 + (rolling sum of 양의 머니 플로우 / rolling sum of 음의 머니 플로우)))
+
+    인자:
+      high: Pandas Series, 최고가
+      low: Pandas Series, 최저가
+      close: Pandas Series, 종가
+      volume: Pandas Series, 거래량
+      window: int, 기간 (기본값 14)
+
+    반환:
+      Pandas Series: 계산된 MFI 값
+    """
+    typical_price = (high + low + close) / 3
+    raw_money_flow = typical_price * volume
+    prev_typical = typical_price.shift(1)
+
+    pos_flow = raw_money_flow.where(typical_price > prev_typical, 0)
+    neg_flow = raw_money_flow.where(typical_price < prev_typical, 0)
+
+    pos_mf = pos_flow.rolling(window=window).sum()
+    neg_mf = neg_flow.rolling(window=window).sum()
+
+    mfi = 100 - (100 / (1 + pos_mf / neg_mf))
+    return mfi
+
+
+def calculate_directional_indicators(high, low, close, window=14):
+    """
+    방향성 지표(+DI, -DI)와 ADX를 계산합니다.
+
+    - True Range: high - low, abs(high - 이전 close), abs(low - 이전 close) 중 최댓값
+    - ATR: window 기간 동안의 True Range의 단순평균
+    - Up Move: 현재 high - 이전 high
+    - Down Move: 이전 low - 현재 low
+    - +DM: Up Move가 Down Move보다 크고 양수이면 Up Move, 그렇지 않으면 0
+    - -DM: Down Move가 Up Move보다 크고 양수이면 Down Move, 그렇지 않으면 0
+    - +DI: 100 * (rolling sum of +DM / ATR)
+    - -DI: 100 * (rolling sum of -DM / ATR)
+    - DX: 100 * |+DI - -DI| / (+DI + -DI)
+    - ADX: window 기간 동안의 DX의 단순평균
+
+    인자:
+      high: Pandas Series, 최고가
+      low: Pandas Series, 최저가
+      close: Pandas Series, 종가
+      window: int, 기간 (기본값 14)
+
+    반환:
+      tuple: (plus_di, minus_di, adx) 각 값은 Pandas Series
+    """
+    # True Range 계산
+    high_low = high - low
+    high_prev_close = (high - close.shift(1)).abs()
+    low_prev_close = (low - close.shift(1)).abs()
+    true_range = pd.concat([high_low, high_prev_close, low_prev_close], axis=1).max(axis=1)
+    atr = true_range.rolling(window=window).mean()
+
+    # +DM, -DM 계산
+    up_move = high - high.shift(1)
+    down_move = low.shift(1) - low
+    plus_dm = up_move.where((up_move > down_move) & (up_move > 0), 0)
+    minus_dm = down_move.where((down_move > up_move) & (down_move > 0), 0)
+
+    plus_dm_sum = plus_dm.rolling(window=window).sum()
+    minus_dm_sum = minus_dm.rolling(window=window).sum()
+
+    plus_di = 100 * (plus_dm_sum / atr)
+    minus_di = 100 * (minus_dm_sum / atr)
+
+    dx = 100 * (abs(plus_di - minus_di) / (plus_di + minus_di))
+    adx = dx.rolling(window=window).mean()
+
+    return plus_di, minus_di, adx
+
 # 1. CSV 파일에 있는 종목목록을 읽어 지난 1년치 데이터를 DB에 저장하는 함수
 def store_stock_data_from_csv(csv_filename, db_path):
     # CSV 파일은 종목코드, 주식명, market 순으로 저장되어 있음
@@ -196,6 +279,12 @@ def get_stock_data(stock_code, market, db_path):
         print(f"{ticker}: 시장 마감 전. API를 통해 최신 데이터를 가져옵니다.")
         try:
             data = yf.download(ticker, period="1y", interval="1d", progress=False)
+            columns = pd.MultiIndex.from_tuples(data.columns, names=['Price', 'Ticker'])
+            data = pd.DataFrame(columns=columns)
+
+            # 첫 번째 레벨의 열 이름을 소문자로 변환
+            data.columns = data.columns.set_levels([data.columns.levels[0].str.lower(), data.columns.levels[1]])
+
             return data
         except Exception as e:
             print(f"{ticker} API 데이터 호출 중 에러: {e}")
