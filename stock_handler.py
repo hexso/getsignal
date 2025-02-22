@@ -273,7 +273,7 @@ def get_stock_data(stock_code, market, db_path):
     stock_code = str(stock_code).strip().zfill(6)
     ticker = stock_code + "." + str(market).strip()
     now = datetime.datetime.now()
-    market_close = now.replace(hour=23, minute=30, second=0, microsecond=0)
+    market_close = now.replace(hour=16, minute=30, second=0, microsecond=0)
 
     if now < market_close:
         print(f"{ticker}: 시장 마감 전. API를 통해 최신 데이터를 가져옵니다.")
