@@ -273,17 +273,17 @@ def get_stock_data(stock_code, market, db_path):
     stock_code = str(stock_code).strip().zfill(6)
     ticker = stock_code + "." + str(market).strip()
     now = datetime.datetime.now()
-    market_close = now.replace(hour=16, minute=30, second=0, microsecond=0)
+    market_close = now.replace(hour=23, minute=30, second=0, microsecond=0)
 
     if now < market_close:
         print(f"{ticker}: 시장 마감 전. API를 통해 최신 데이터를 가져옵니다.")
         try:
             data = yf.download(ticker, period="1y", interval="1d", progress=False)
             columns = pd.MultiIndex.from_tuples(data.columns, names=['Price', 'Ticker'])
-            data = pd.DataFrame(columns=columns)
+            data1 = pd.DataFrame(columns=columns)
 
             # 첫 번째 레벨의 열 이름을 소문자로 변환
-            data.columns = data.columns.set_levels([data.columns.levels[0].str.lower(), data.columns.levels[1]])
+            data.columns = data.columns.set_levels([data1.columns.levels[0].str.lower(), data1.columns.levels[1]])
 
             return data
         except Exception as e:
