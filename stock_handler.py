@@ -3,6 +3,8 @@ import pandas as pd
 import yfinance as yf
 import datetime
 import os
+import numpy as np
+import matplotlib.pyplot as plt
 
 CSV_FILE = "stocks_list.csv"   # CSV 파일: 종목코드, 주식명, market
 DB_FILE = "stocks.db"  # SQLite DB 파일 경로
@@ -306,6 +308,46 @@ def get_stock_data(stock_code, market, db_path):
             print(f"{ticker} DB 데이터 호출 중 에러: {e}")
             return None
 
+def get_volume_profile(stock_code='AAPL', start_date=None, end_date=None, bins=30, draw=False):
+    # 주식 데이터 다운로드
+    if start_date is None:
+        start_date = (datetime.datetime.today() - datetime.timedelta(days=180)).strftime("%Y-%m-%d")
+    if end_date is None:
+        end_date = datetime.datetime.today().strftime("%Y-%m-%d")
+    # Yahoo Finance에서 데이터 가져오기
+    stock_data = yf.download(stock_code, start=start_date)
+
+    if stock_data.empty:
+        print("데이터를 가져오지 못했습니다. 날짜 범위와 종목 코드를 확인하세요.")
+        return None
+
+    # NaN 값 제거
+    stock_data.dropna(inplace=True)
+
+    # 'Price' 컬럼 생성 (고가와 저가의 평균)
+    stock_data['Price'] = (stock_data['High'] + stock_data['Low'] + stock_data['Close']) / 3
+
+    # 가격 구간(bin) 설정
+    min_price = stock_data['Price'].min()
+    max_price = stock_data['Price'].max()
+    price_bins = np.linspace(min_price, max_price, bins + 1)  # bins 개수보다 1개 많아야 함
+
+    # 매물대(Volume Profile) 계산
+    volume_profile, bin_edges = np.histogram(stock_data['Price'], bins=price_bins, weights=stock_data['Volume'][stock_code])
+
+    if draw:
+        # 매물대 그래프 그리기
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.barh(bin_edges[:-1], volume_profile, height=(bin_edges[1] - bin_edges[0]), color='blue', alpha=0.6)
+
+        ax.set_xlabel("Volume")
+        ax.set_ylabel("Price ($)")
+        ax.set_title(f"{stock_code} Volume Profile [{start_date} ~ {end_date}]")
+        ax.grid(axis='x', linestyle='--', alpha=0.7)
+
+        plt.show()
+
+
 # 예시 실행 코드
 if __name__ == "__main__":
     # 1. 초기 저장: DB가 없으면 CSV에 있는 종목들의 지난 1년치 데이터를 DB에 저장
@@ -324,3 +366,6 @@ if __name__ == "__main__":
     stock_info = get_stock_data("005930", "KS", DB_FILE)
     if stock_info is not None:
         print(stock_info.head())
+
+    get_volume_profile('AAPL')
+
