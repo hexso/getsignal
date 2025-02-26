@@ -66,16 +66,17 @@ def start_check():
         stock_code = str(row['종목코드']).strip()
         stock_name = str(row['주식명']).strip()
         market = str(row['market']).strip()
+        ticker = stock_code + "." + str(market).strip()
         data = get_stock_data(stock_code, market, DB_FILE)
         if data is None or data.empty:
             continue
 
         # RSI 계산 (calculate_rsi 함수는 이미 구현되어 있다고 가정)
         rsi_series = calculate_rsi(data['close'])
-        latest_rsi = rsi_series.iloc[-1]
-        rsi_yesterday = rsi_series.iloc[-2]
-        rsi_before_yesterday = rsi_series.iloc[-2]
-        latest_price = data['close'].iloc[-1]
+        latest_rsi = rsi_series.iloc[-1][ticker]
+        rsi_yesterday = rsi_series.iloc[-2][ticker]
+        rsi_before_yesterday = rsi_series.iloc[-2][ticker]
+        latest_price = data['close'].iloc[-1][ticker]
 
         # MACD 계산
         macd_line, signal_line, _ = calculate_macd(data['close'])
@@ -87,6 +88,7 @@ def start_check():
                 f"{stock_code} {stock_name}:\n"
                 f"  RSI: {latest_rsi:.2f}, Price: {latest_price:.2f}\n"
             )
+            print(f'{stock_code}의 RSI가 {RSI_LOWER}이하입니다.  {latest_rsi}')
 
     if results:
         message_text = "매수 신호 종목:\n" + "\n\n".join(results)
