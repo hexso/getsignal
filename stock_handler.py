@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 
 CSV_FILE = "stocks_list.csv"   # CSV 파일: 종목코드, 주식명, market
 DB_FILE = "stocks.db"  # SQLite DB 파일 경로
+US_CSV_FILE = "stocks_list_us.csv"
+US_DB_FILE = "stocks_us.db"
 
 def create_db_table(conn):
     """
@@ -155,13 +157,16 @@ def store_stock_data_from_csv(csv_filename, db_path):
     # CSV 파일은 종목코드, 주식명, market 순으로 저장되어 있음
     # 종목코드를 문자열로 읽고, 6자리(앞의 0 포함)로 변환
     df = pd.read_csv(csv_filename, encoding="utf-8-sig", dtype={'종목코드': str})
-    df['종목코드'] = df['종목코드'].str.zfill(6)
 
     conn = sqlite3.connect(db_path)
     create_db_table(conn)
 
     for idx, row in df.iterrows():
-        ticker = str(row['종목코드']).strip() + "." + str(row['market']).strip()
+        if "market" in df.columns:
+            row['종목코드'] = row['종목코드'].str.zfill(6)
+            ticker = str(row['종목코드']).strip() + "." + str(row['market']).strip()
+        else:
+            ticker = str(row['종목코드']).strip()
         stock_name = str(row['주식명']).strip()
         print(f"{ticker} ({stock_name}) 데이터 저장 시작...")
         try:
@@ -351,9 +356,9 @@ def get_volume_profile(stock_code='AAPL', start_date=None, end_date=None, bins=3
 # 예시 실행 코드
 if __name__ == "__main__":
     # 1. 초기 저장: DB가 없으면 CSV에 있는 종목들의 지난 1년치 데이터를 DB에 저장
-    if not os.path.exists(DB_FILE):
+    if not os.path.exists(US_DB_FILE):
         print("DB가 존재하지 않으므로 초기 저장을 진행합니다.")
-        store_stock_data_from_csv(CSV_FILE, DB_FILE)
+        store_stock_data_from_csv(US_CSV_FILE, US_DB_FILE)
     else:
         print("DB 파일이 이미 존재합니다. 초기 저장은 건너뜁니다.")
 
