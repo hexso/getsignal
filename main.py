@@ -13,6 +13,7 @@ user_id = None
 bot_id = None
 bot_token = None
 RSI_LOWER = 20
+TRADE_AMOUNT = 100000000 #거래금액 1억이상
 
 def telegram_init():
     global bot_token, bot_id, user_id, bot
@@ -77,13 +78,14 @@ def start_check():
         rsi_yesterday = rsi_series.iloc[-2][ticker]
         rsi_before_yesterday = rsi_series.iloc[-2][ticker]
         latest_price = data['close'].iloc[-1][ticker]
+        latest_volume = data['volume'].iloc[-1][ticker]
 
         # MACD 계산
         macd_line, signal_line, _ = calculate_macd(data['close'])
 
 
         # RSI가 20미만, RSI가 추세전환 했는지 확인
-        if latest_rsi < RSI_LOWER and rsi_yesterday > latest_rsi < rsi_before_yesterday:# and latest_before_rsi < latest_rsi:
+        if latest_rsi < RSI_LOWER and rsi_yesterday > latest_rsi < rsi_before_yesterday and latest_price * latest_volume > TRADE_AMOUNT :# and latest_before_rsi < latest_rsi:
             results.append(
                 f"{stock_code} {stock_name}:\n"
                 f"  RSI: {latest_rsi:.2f}, Price: {latest_price:.2f}\n"
