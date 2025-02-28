@@ -49,6 +49,12 @@ async def handle_start_message(update: Update, context: ContextTypes.DEFAULT_TYP
         # result는 {"message": ..., "result": ...} 형식의 dict라고 가정
         await update.message.reply_text("start에 대한 명령을 완료하였습니다.")
         await send_telegram_message(result["result"])
+    elif text == "us":
+        # 동기 함수를 blocking 없이 실행 (필요한 경우)
+        result = await asyncio.to_thread(start_us_market)
+        # result는 {"message": ..., "result": ...} 형식의 dict라고 가정
+        await update.message.reply_text("us 대한 명령을 완료하였습니다.")
+        await send_telegram_message(result["result"])
     else:
         await update.message.reply_text("알 수 없는 명령입니다. 'start'를 보내주세요.")
 
