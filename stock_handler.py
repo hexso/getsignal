@@ -153,20 +153,31 @@ def calculate_directional_indicators(high, low, close, window=14):
     return plus_di, minus_di, adx
 
 # 1. CSV 파일에 있는 종목목록을 읽어 지난 1년치 데이터를 DB에 저장하는 함수
-def store_stock_data_from_csv(csv_filename, db_path):
+def store_stock_data_from_csv(market="KR"):
     # CSV 파일은 종목코드, 주식명, market 순으로 저장되어 있음
     # 종목코드를 문자열로 읽고, 6자리(앞의 0 포함)로 변환
+    if market == "KR":
+        csv_filename = CSV_FILE
+        db_path = DB_FILE
+    elif market == "US":
+        csv_filename = US_CSV_FILE
+        db_path = US_DB_FILE
+    else:
+        print("올바른 market값을 넣어 주세요")
+        return
+
     df = pd.read_csv(csv_filename, encoding="utf-8-sig", dtype={'종목코드': str})
 
     conn = sqlite3.connect(db_path)
     create_db_table(conn)
 
     for idx, row in df.iterrows():
-        if "market" in df.columns:
+        if market == "KR": #한국 주식
             row['종목코드'] = row['종목코드'].str.zfill(6)
             ticker = str(row['종목코드']).strip() + "." + str(row['market']).strip()
-        else:
+        else: #미국 주식
             ticker = str(row['종목코드']).strip()
+
         stock_name = str(row['주식명']).strip()
         print(f"{ticker} ({stock_name}) 데이터 저장 시작...")
         try:
@@ -206,17 +217,31 @@ def store_stock_data_from_csv(csv_filename, db_path):
     conn.close()
 
 
-def update_stock_data_from_csv(csv_filename, db_path):
+def update_stock_data_from_csv(market="KR"):
+    if market == "KR":
+        csv_filename = CSV_FILE
+        db_path = DB_FILE
+    elif market == "US":
+        csv_filename = US_CSV_FILE
+        db_path = US_DB_FILE
+    else:
+        print("올바른 market값을 넣어 주세요")
+        return
+
+
     # CSV 파일은 종목코드, 주식명, market 순으로 저장되어 있음
     df = pd.read_csv(csv_filename, encoding="utf-8-sig", dtype={'종목코드': str})
-    df['종목코드'] = df['종목코드'].str.zfill(6)
 
     conn = sqlite3.connect(db_path)
     create_db_table(conn)
     cur = conn.cursor()
 
     for idx, row in df.iterrows():
-        ticker = str(row['종목코드']).strip() + "." + str(row['market']).strip()
+        if market == "KR":  # 한국 주식
+            row['종목코드'] = row['종목코드'].str.zfill(6)
+            ticker = str(row['종목코드']).strip() + "." + str(row['market']).strip()
+        else:  # 미국 주식
+            ticker = str(row['종목코드']).strip()
         stock_name = str(row['주식명']).strip()
         # DB에서 해당 티커의 마지막 저장된 날짜 조회
         cur.execute("SELECT MAX(date) FROM stock_data WHERE ticker = ?", (ticker,))
@@ -270,17 +295,27 @@ def update_stock_data_from_csv(csv_filename, db_path):
 
     conn.close()
 
-def get_stock_data(stock_code, market, db_path):
+def get_stock_data(stock_code, ko_market=None, market="KR"):
     """
     주어진 종목코드와 market을 이용해 ticker를 구성합니다.
     현재 시간이 주식시장 마감(오후 4시) 전이면 yfinance API를 통해 최신 데이터를,
     마감 후이면 DB에 저장된 데이터를 불러옵니다.
+    미국의 경우에는 한국시간 오전 7시를 마감시간으로 정합니다.
     """
     # 숫자로 처리되어 앞의 0이 사라지는 문제를 방지하기 위해 6자리 문자열로 변환
-    stock_code = str(stock_code).strip().zfill(6)
-    ticker = stock_code + "." + str(market).strip()
     now = datetime.datetime.now()
-    market_close = now.replace(hour=16, minute=30, second=0, microsecond=0)
+    if market == "KR":
+        stock_code = str(stock_code).strip().zfill(6)
+        ticker = stock_code + "." + str(ko_market).strip()
+        market_close = now.replace(hour=16, minute=30, second=0, microsecond=0)
+        db_path = DB_FILE
+    elif market == "US":
+        ticker = stock_code
+        market_close = now.replace(hour=8, minute=0, second=0, microsecond=0)
+        db_path = US_DB_FILE
+    else:
+        print("잘못된 market을 입력하셨습니다.")
+        return
 
     if now < market_close:
         print(f"{ticker}: 시장 마감 전. API를 통해 최신 데이터를 가져옵니다.")
@@ -357,18 +392,24 @@ def get_volume_profile(stock_code='AAPL', start_date=None, end_date=None, bins=3
 if __name__ == "__main__":
     # 1. 초기 저장: DB가 없으면 CSV에 있는 종목들의 지난 1년치 데이터를 DB에 저장
     if not os.path.exists(US_DB_FILE):
-        print("DB가 존재하지 않으므로 초기 저장을 진행합니다.")
-        store_stock_data_from_csv(US_CSV_FILE, US_DB_FILE)
+        print("미국 DB가 존재하지 않으므로 초기 저장을 진행합니다.")
+        store_stock_data_from_csv("US")
     else:
-        print("DB 파일이 이미 존재합니다. 초기 저장은 건너뜁니다.")
+        print("미국 DB 파일이 이미 존재합니다. 초기 저장은 건너뜁니다.")
+
+    if not os.path.exists(DB_FILE):
+        print("국내DB가 존재하지 않으므로 초기 저장을 진행합니다.")
+        store_stock_data_from_csv("US")
+    else:
+        print("국내DB 파일이 이미 존재합니다. 초기 저장은 건너뜁니다.")
 
     # 2. 최신화 함수는 매일 오후 4시 20분 이후에 실행되도록 스케줄러와 연동하면 됩니다.
     #    (여기서는 수동 호출 예시)
-    #update_stock_data_from_csv(CSV_FILE, DB_FILE)
+    #update_stock_data_from_csv("KR")
 
     # 3. 종목정보 조회 예시:
     # 예를 들어, 종목코드 "005930"과 market "KS"를 입력받은 경우:
-    stock_info = get_stock_data("005930", "KS", DB_FILE)
+    stock_info = get_stock_data("005930", "KS", "KR")
     if stock_info is not None:
         print(stock_info.head())
 
