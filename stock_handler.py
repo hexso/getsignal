@@ -238,7 +238,7 @@ def update_stock_data_from_csv(market="KR"):
 
     for idx, row in df.iterrows():
         if market == "KR":  # 한국 주식
-            row['종목코드'] = row['종목코드'].str.zfill(6)
+            row['종목코드'] = str(row['종목코드']).zfill(6)
             ticker = str(row['종목코드']).strip() + "." + str(row['market']).strip()
         else:  # 미국 주식
             ticker = str(row['종목코드']).strip()
@@ -326,7 +326,9 @@ def get_stock_data(stock_code, ko_market=None, market="KR"):
 
             # 첫 번째 레벨의 열 이름을 소문자로 변환
             data.columns = data.columns.set_levels([data1.columns.levels[0].str.lower(), data1.columns.levels[1]])
-
+            # 'Ticker' 레벨이 있는 경우 제거
+            if isinstance(data.columns, pd.MultiIndex) and 'Ticker' in data.columns.names:
+                data.columns = data.columns.droplevel('Ticker')
             return data
         except Exception as e:
             print(f"{ticker} API 데이터 호출 중 에러: {e}")

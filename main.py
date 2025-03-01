@@ -81,11 +81,11 @@ def start_kr_market():
 
         # RSI 계산 (calculate_rsi 함수는 이미 구현되어 있다고 가정)
         rsi_series = calculate_rsi(data['close'])
-        latest_rsi = rsi_series.iloc[-1][ticker]
-        rsi_yesterday = rsi_series.iloc[-2][ticker]
-        rsi_before_yesterday = rsi_series.iloc[-2][ticker]
-        latest_price = data['close'].iloc[-1][ticker]
-        latest_volume = data['volume'].iloc[-1][ticker]
+        latest_rsi = rsi_series.iloc[-1]
+        rsi_yesterday = rsi_series.iloc[-2]
+        rsi_before_yesterday = rsi_series.iloc[-2]
+        latest_price = data['close'].iloc[-1]
+        latest_volume = data['volume'].iloc[-1]
 
         # MACD 계산
         macd_line, signal_line, _ = calculate_macd(data['close'])
@@ -181,6 +181,7 @@ async def main():
 
 
 if __name__ == "__main__":
+    scheduled_kr_stock_update()
     telegram_init()
     nest_asyncio.apply()
     asyncio.run(main())
