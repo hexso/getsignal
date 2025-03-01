@@ -7,6 +7,7 @@ import asyncio
 import logging
 import nest_asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+import argparse
 
 # --- 환경 설정 ---
 bot = None
@@ -181,7 +182,16 @@ async def main():
 
 
 if __name__ == "__main__":
-    scheduled_kr_stock_update()
+
+    # Add arguments
+    parser = argparse.ArgumentParser(description="Process some integers.")
+    parser.add_argument("-u", "--update", help="Update Korean market", action="store_true")
+    # Parse arguments
+    args = parser.parse_args()
+
+    if args.update:
+        scheduled_kr_stock_update()
+
     telegram_init()
     nest_asyncio.apply()
     asyncio.run(main())
